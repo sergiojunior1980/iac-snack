@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  traefik:
+    image: ${TRAEFIK_IMAGE:-traefik:v3.7}
+    command:
+      - --api.dashboard=false
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedbydefault=false
+      - --providers.swarm.network=${NETWORK_PUBLIC:-network_public}
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencryptresolver.acme.httpchallenge=true
+      - --certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencryptresolver.acme.email=${ACME_EMAIL:?ACME_EMAIL obrigatorio}
+      - --certificatesresolvers.letsencryptresolver.acme.storage=/letsencrypt/acme.json
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - certificates:/letsencrypt
+    networks:
+      - public
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  public:
+    external: true
+    name: ${NETWORK_PUBLIC:-network_public}
+
+volumes:
+  certificates:
+    external: true
+    name: volume_swarm_certificates
+

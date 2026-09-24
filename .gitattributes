@@ -1,0 +1,11 @@
+# Normaliza tudo para LF no repositorio e tambem no checkout.
+#
+# Nao e preferencia de estilo: o bootstrap e copiado por `scp` direto da arvore
+# de trabalho do Windows para a VPS (docs/01, etapa 3). Com CRLF, o heredoc que
+# escreve o hardening do sshd nunca encontra o terminador `EOF` e engole o resto
+# do script — o bootstrap falha de um jeito dificil de diagnosticar.
+* text=auto eol=lf
+
+# Scripts e YAML sao executados/lidos em Linux; nunca podem virar CRLF.
+*.sh text eol=lf
+*.yml text eol=lf

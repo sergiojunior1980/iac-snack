@@ -1,0 +1,81 @@
+name: CI
+
+# Este repositorio nao tem CD proprio: quem aplica as stacks e o Portainer,
+# acompanhando o git via GitOps updates. O papel do CI e impedir que um YAML
+# quebrado chegue la — um erro so apareceria na VPS, no meio de um deploy.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # SC1091: o shellcheck nao consegue seguir /etc/os-release, que so existe
+      # na VPS. Nao e achado real.
+      - name: Run shellcheck
+        run: shellcheck --exclude=SC1091 bootstrap/*.sh
+
+      # Um CRLF que chegue aqui quebra o heredoc do sshd no bootstrap e engole o
+      # resto do script. O .gitattributes previne; isto garante.
+      - name: Reject CRLF in shell scripts
+        run: |
+          set -euo pipefail
+          if grep -rlU $'\r' bootstrap/ 2>/dev/null | grep -q .; then
+            echo "Arquivos com CRLF em bootstrap/:"
+            grep -rlU $'\r' bootstrap/
+            exit 1
+          fi
+
+  stacks:
+    name: Validate stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Valida a sintaxe de cada stack.yml e, de quebra, prova que o env.example
+      # ao lado documenta todas as variaveis obrigatorias: uma variavel nova com
+      # `${VAR:?}` que nao seja adicionada ao env.example reprova aqui.
+      - name: Validate every stack against its env.example
+        run: |
+          set -euo pipefail
+          status=0
+          for stack in stacks/*/stack.yml templates/*/stack.yml; do
+            dir=$(dirname "$stack")
+            if (
+              set -a
+              if [ -f "$dir/env.example" ]; then
+                # Segredos ficam em branco no env.example de proposito; aqui so
+                # importa que a variavel esteja declarada.
+                eval "$(sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=[[:space:]]*$/\1=ci-placeholder/' "$dir/env.example" | grep -E '^[A-Za-z_]')"
+              fi
+              set +a
+              docker compose -f "$stack" config --quiet
+            ); then
+              echo "OK      $stack"
+            else
+              echo "FALHOU  $stack"
+              status=1
+            fi
+          done
+          exit $status

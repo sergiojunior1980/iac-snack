@@ -1,0 +1,56 @@
+version: "3.8"
+
+# Stack Swarm do snack-station.
+#
+# O codigo e o Dockerfile ficam em github.com/sergiojunior1980/snack-station; a
+# imagem e publicada no GHCR pelo CD daquele repositorio. Aqui fica o contrato
+# de execucao: rota, limites, redes e quais variaveis o container espera.
+#
+# Os valores das variaveis ficam no Portainer. Ver env.example ao lado.
+#
+# As NEXT_PUBLIC_* NAO entram aqui. Elas sao congeladas no bundle do cliente
+# durante o `next build` e viajam dentro da imagem.
+#
+# A linha `image` abaixo e reescrita pelo CD do snack-station a cada deploy,
+# com a tag imutavel do commit.
+
+services:
+  snack:
+    image: ghcr.io/sergiojunior1980/snack-station:sha-0000000 # gerenciado pelo CD
+    environment:
+      NODE_ENV: production
+    # Somente `public`. O app fala com o Supabase pela internet e nao usa o
+    # Postgres nem o Redis da VPS.
+    networks:
+      - public
+    stop_grace_period: 30s
+    deploy:
+      replicas: ${APP_REPLICAS:-1}
+      restart_policy:
+        condition: on-failure
+      update_config:
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        order: start-first
+      resources:
+        limits:
+          cpus: "${APP_CPU_LIMIT:-1.00}"
+          memory: ${APP_MEMORY_LIMIT:-1G}
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=${NETWORK_PUBLIC:-network_public}
+        - traefik.http.routers.snack.rule=Host(`${APP_HOST:?APP_HOST obrigatorio}`)
+        - traefik.http.routers.snack.entrypoints=websecure
+        - traefik.http.routers.snack.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.snack.service=snack
+        - traefik.http.routers.snack.middlewares=snack-headers
+        - traefik.http.services.snack.loadbalancer.server.port=3000
+        - traefik.http.middlewares.snack-headers.headers.stsSeconds=31536000
+        - traefik.http.middlewares.snack-headers.headers.stsIncludeSubdomains=true
+        - traefik.http.middlewares.snack-headers.headers.contentTypeNosniff=true
+
+networks:
+  public:
+    external: true
+    name: ${NETWORK_PUBLIC:-network_public}

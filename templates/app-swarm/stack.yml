@@ -1,0 +1,46 @@
+version: "3.8"
+
+# Base para uma aplicacao nova neste repositorio. Copie esta pasta para
+# `stacks/NOME-DA-APP/`. O repositorio da aplicacao guarda apenas codigo,
+# Dockerfile e o workflow que publica a imagem.
+#
+# Ajuste imagem, porta interna e troque `app` pelo nome real nos routers e
+# services do Traefik. Toda variavel obrigatoria precisa estar no env.example
+# ao lado, senao o CI reprova.
+#
+# O Snack Station usa Supabase e fica apenas em `public`. Nao ha Postgres nem
+# Redis nesta VPS.
+
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE obrigatoria}
+    environment:
+      NODE_ENV: production
+    networks:
+      - public
+    deploy:
+      replicas: ${APP_REPLICAS:-1}
+      restart_policy:
+        condition: on-failure
+      update_config:
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        order: start-first
+      resources:
+        limits:
+          cpus: "${APP_CPU_LIMIT:-1.00}"
+          memory: ${APP_MEMORY_LIMIT:-1G}
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=${NETWORK_PUBLIC:-network_public}
+        - traefik.http.routers.app.rule=Host(`${APP_HOST:?APP_HOST obrigatorio}`)
+        - traefik.http.routers.app.entrypoints=websecure
+        - traefik.http.routers.app.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.app.service=app
+        - traefik.http.services.app.loadbalancer.server.port=${APP_PORT:-3000}
+
+networks:
+  public:
+    external: true
+    name: ${NETWORK_PUBLIC:-network_public}
