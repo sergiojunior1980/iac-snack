@@ -16,7 +16,7 @@ version: "3.8"
 
 services:
   snack:
-    image: ghcr.io/sergiojunior1980/snack-station:sha-344c406 # gerenciado pelo CD
+    image: ghcr.io/sergiojunior1980/snack-station:sha-7d347d0 # gerenciado pelo CD
     environment:
       NODE_ENV: production
     # Somente `public`. O app fala com o Supabase pela internet e nao usa o
